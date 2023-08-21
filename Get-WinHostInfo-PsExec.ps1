@@ -125,9 +125,9 @@ Function Install-PsExec {
     } Else {
         # courtesy of Adam Bertram @ https://adamtheautomator.com/psexec/
         Invoke-WebRequest -Uri 'https://download.sysinternals.com/files/PSTools.zip' -OutFile 'pstools.zip'
-        Expand-Archive -Path 'pstools.zip' -DestinationPath "$env:TEMP\pstools"
-        Move-Item -Path "$env:TEMP\pstools\psexec.exe" .
-        Remove-Item -Path "$env:TEMP\pstools" -Recurse
+        Expand-Archive -Path 'pstools.zip' -DestinationPath "$env:SystemRoot\System32\pstools"
+        Move-Item -Path "$env:SystemRoot\System32\pstools\psexec.exe"
+        Remove-Item -Path "$env:SystemRoot\System32\pstools" -Recurse
         # Accept EULA if specified
         If ($AcceptEULA -eq $True) {
             RegEdit -regPath "HKCU:\SOFTWARE\Sysinternals\PsExec" -regName "EulaAccepted" -regValue "1" -silent $true
