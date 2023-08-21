@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
     Get Primary User information for a domain-joined computer
-    Not to be confused w/ ConfigMan's Get-CMUserDeviceAffinity
+    by means of EventLog analysis.
+    Not to be confused w/ ConfigMan's Get-CMUserDeviceAffinity.
 
 .NOTES
     Name: Get-UserDeviceAffinity
