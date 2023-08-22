@@ -14,26 +14,37 @@
     https://
 #>
 
-# Clear variables for repeatability
+# clear variables for repeatability
 Get-Variable -Exclude PWD,*Preference | Remove-Variable -EA 0
 
-# Identify location of script
+# identify location of script
 $scriptPath = Split-Path ($MyInvocation.MyCommand.Path) -Parent
 
-# Filename for Get-UserDeviceAffinity script
+# filename for Get-UserDeviceAffinity script
 $GetUserDeviceAffinity = "Get-UserDeviceAffinity.ps1"
-# Build UNC path
+# build UNC path
 $GetUserDeviceAffinity = "\\" + $env:COMPUTERNAME + '\' + $ScriptPath.Replace(':', '$') + '\' + $GetUserDeviceAffinity
 
 # set output location for json file
 $outputPath = Join-Path $scriptPath "WindowsHostsInfo.json"
 
-# specify timeout & throttle limit (affects performance)
-$TimeoutSeconds = '300'
-$ThrottleLimit =  '8'
+# specify timeout & throttle limit
+# these affect performance
+$Timeout       = '300' # timeout in seconds
+$ThrottleLimit = '8'   # batch size, running ThreadJobs will be 2x this number because of corresponding timer jobs
 
-# get all computers from AD
-$computerList = (Get-ADComputer -Filter * -Properties * | Where-Object -Property Enabled -EQ $True | Select-Object -Property Name | Sort-Object -Property Name).Name
+# get all enabled computers from AD that can be pinged
+$computerList = Get-ADComputer -Filter {Enabled -eq $true} -Properties Name | 
+    Where-Object {Test-Connection -ComputerName $_.Name -Count 1 -Quiet} | 
+    Select-Object -Property Name | 
+    Sort-Object -Property Name
+
+# chunk the computer names into groups based on the throttle limit
+$chunks = @()
+for ($i = 0; $i -lt $computerList.Count; $i += $ThrottleLimit) {
+    $chunk = $computerList[$i..($i + $ThrottleLimit - 1)]
+    $chunks += ,@($chunk)
+}
 
 # check for ThreadJob module, if not present, install
 Function Install-Module {
@@ -44,7 +55,7 @@ Function Install-Module {
         If (-not $presence) {
         Find-Module $name -ErrorAction SilentlyContinue | Install-Module -Force
     }
-}
+} # end function Install-Module
 Install-Module -name ThreadJob
 
 # check for PsExec, if not present, install
@@ -52,7 +63,6 @@ Function Install-PsExec {
     param (
         [bool]$AcceptEULA
     )
-
     Function RegEdit {
         param(
         $regPath,
@@ -125,17 +135,18 @@ Function Install-PsExec {
     } Else {
         # courtesy of Adam Bertram @ https://adamtheautomator.com/psexec/
         Invoke-WebRequest -Uri 'https://download.sysinternals.com/files/PSTools.zip' -OutFile 'pstools.zip'
-        Expand-Archive -Path 'pstools.zip' -DestinationPath "$env:SystemRoot\System32\pstools"
-        Move-Item -Path "$env:SystemRoot\System32\pstools\psexec.exe"
-        Remove-Item -Path "$env:SystemRoot\System32\pstools" -Recurse
+        Expand-Archive -Path 'pstools.zip' -DestinationPath "$env:TEMP\pstools"
+        Move-Item -Path "$env:TEMP\pstools\psexec.exe" .
+        Remove-Item -Path "$env:TEMP\pstools" -Recurse
         # Accept EULA if specified
         If ($AcceptEULA -eq $True) {
             RegEdit -regPath "HKCU:\SOFTWARE\Sysinternals\PsExec" -regName "EulaAccepted" -regValue "1" -silent $true
         }
     }
-} # End Function Install-PsExec
+} # end function Install-PsExec
 Install-PsExec -AcceptEULA $True
 
+# start Get-ComputerInfo function
 Function Get-ComputerInfo {
     param (
         $computerList,
@@ -145,7 +156,7 @@ Function Get-ComputerInfo {
         [bool]$drivers,        # only specify if desired (large dataset) 
         $GetUserDeviceAffinity # file path for Get-UserDeviceAffinity.ps1 (only specify if desired)
     )
-
+    # start GetCompInfo scriptblock
     $GetCompInfo = {
         param (
             $computerName,
@@ -153,30 +164,31 @@ Function Get-ComputerInfo {
             $WindowsHosts,
             $outputPath
         )
-        Function Convert-ToObjects {
+        # start function ConvertTo-Objects
+        Function ConvertTo-Objects {
             param (
                 $inputString
             )
-            # Split the input string into lines
+            # split the input string into lines
             $lines = $inputString -split "`r?`n"
 
-            # Initialize an empty array to hold objects
+            # initialize an empty array to hold objects
             $objects = @()
-            # Initialize an empty hashtable to hold property values for the current application
+            # initialize an empty hashtable to hold property values for the current application
             $properties = @{}
 
-            # Iterate through each line and extract property and value using regex
+            # iterate through each line and extract property and value using regex
             foreach ($line in $lines) {
-                # Check if the line is empty or contains only whitespace
+                # check if the line is empty or contains only whitespace
                 if ([string]::IsNullOrWhiteSpace($line)) {
-                    # If an empty line is encountered, create an object and add it to the array
+                    # if an empty line is encountered, create an object and add it to the array
                     if ($properties.Count -gt 0) {
                         $object = [PSCustomObject]$properties
                         $objects += $object
                         $properties = @{}  # Reset properties for the next application
                     }
                 } elseif ($line -match '^(.*?):\s*(.*)$') {
-                    # Use regex to split the line into property and value
+                    # use regex to split the line into property and value
                     $property = $matches[1].Trim()
                     $value = $matches[2].Trim()
 
@@ -185,28 +197,28 @@ Function Get-ComputerInfo {
                     }
                 }
             }
-            # If there are properties left, create the last object and add it to the array
+            # if there are properties left, create the last object and add it to the array
             if ($properties.Count -gt 0) {
                 $object = [PSCustomObject]$properties
                 $objects += $object
             }
-            # Return the resulting objects
+            # return the resulting objects
             Write-Output $objects
-        } # End Function Convert-ToObjects
+        } # end function ConvertTo-Objects
             
         # initial run w/ PsExec
         $compInfo = psexec.exe -s -nobanner -h \\$computerName Powershell.exe -Command "Get-ComputerInfo" 2> $null
-        $compInfo = Convert-ToObjects -inputString $compInfo
+        $compInfo = ConvertTo-Objects -inputString $compInfo
 
         # use Get-ComputerInfo as litmus test for whether device is responsive & Windows OS
         # further actions are contingent on Get-ComputerInfo results (increases performance)
         if ($compInfo) {
             # get network info & convert to objects
             $netInfo = psexec.exe -s -nobanner -h \\$computerName Powershell.exe -Command "Get-NetIPConfiguration" 2> $null
-            $netInfo = Convert-ToObjects -inputString $netInfo
+            $netInfo = ConvertTo-Objects -inputString $netInfo
             # get application info & convert to objects
             $appInfo = psexec.exe -s -nobanner -h \\$computerName Powershell.exe -Command "Get-WmiObject -Class Win32_Product" 2> $null
-            $appInfo = Convert-ToObjects -inputString $appInfo
+            $appInfo = ConvertTo-Objects -inputString $appInfo
             # create output object w/ above objects
             $output = [PSCustomObject]@{
                     System       = $compInfo
@@ -216,39 +228,60 @@ Function Get-ComputerInfo {
             # if drivers is specified, get driver info, convert to objects, and add to output
             if ($drivers) {
                 $driverInfo = psexec.exe -s -nobanner -h \\$computerName Powershell.exe -Command "Get-WmiObject -Class Win32_PnPSignedDriver" 2> $null
-                $driverInfo = Convert-ToObjects -inputString $driverInfo
+                $driverInfo = ConvertTo-Objects -inputString $driverInfo
                 $output | Add-Member -MemberType NoteProperty -Name "Drivers" -Value $driverInfo
             }
             # if GetUserDeviceAffinity param is specified, add primary user property
             if ($GetUserDeviceAffinity) {
                 $primaryUser = psexec.exe -s -nobanner -h \\$computerName Powershell.exe -NoInteractive -ExecutionPolicy Bypass -File "$GetUserDeviceAffinity" 2> $null
-                $primaryUser = Convert-ToObjects -inputString $primaryUser
+                $primaryUser = ConvertTo-Objects -inputString $primaryUser
                 $output | Add-Member -MemberType NoteProperty -Name "PrimaryUser" -Value $primaryUser
             }
-
             # Add output to WindowsHosts & export to .json output file
             $windowsHosts | Add-Member -MemberType NoteProperty -Name $computerName -Value $output
             $windowsHosts | ConvertTo-Json -depth 100 | Out-File "$outputPath" -Force
+            Write-Output "$computerName - information retrieved successfully."
         }
     } # end GetCompInfo scriptblock
+
+    # start Clear-Jobs function
+    Function Clear-Jobs {
+        Get-Job | Wait-Job
+        Get-Job | Stop-Job
+        Get-Job | Remove-Job
+    } # end Clear-Jobs function
+
+    # start timer scriptblock
+    $timerScript = {
+        param (
+            $Timeout,
+            $compInfoJob
+        )
+        $compInfoJob | Wait-Job -Timeout $Timeout
+        $compInfoJob | Stop-Job
+        $compInfoJob | Remove-Job
+    } # end timer scriptblock
 
     # initialize WindowsHosts object
     $windowsHosts = [PSCustomObject]@{}
 
-    # foreach computer, start jobs & timeout
-    $computerList | ForEach-Object {
-        $compInfoJob  = Start-ThreadJob -ScriptBlock $GetCompInfo -ThrottleLimit $ThrottleLimit -ArgumentList $_, $GetUserDeviceAffinity, $windowsHosts, $outputPath
-    }
-    # wait for specified timeout
-    Get-Job | Wait-Job -Timeout $Timeout
-    # clean up jobs
-    Get-Job | Stop-Job
-    Get-Job | Remove-Job
+    # process each chunk of computer names
+    foreach ($chunk in $chunks) {
+        Clear-Jobs
 
-} # End Function Get-ComputerInfo
+        Write-Host -ForegroundColor Green "Processing new chunk"
+
+        foreach ($computerName in $chunk) {
+            Write-Host -ForegroundColor Cyan "Processing computer: $computerName"
+            $compInfoJob  = Start-ThreadJob -ScriptBlock $GetCompInfo -ThrottleLimit $ThrottleLimit -ArgumentList $computerName, $GetUserDeviceAffinity, $windowsHosts, $outputPath
+            $timerJob     = Start-ThreadJob -ScriptBlock $timerScript -ArgumentList $Timeout, $compInfoJob
+        }
+    }
+    Clear-Jobs
+} # end function Get-ComputerInfo
 
 $elapsedTime = Measure-Command {
-    Get-ComputerInfo -computerList $computerList -Timeout $TimeoutSeconds -ThrottleLimit $ThrottleLimit -outputPath $outputPath #-GetUserDeviceAffinity $GetUserDeviceAffinity
+    Get-ComputerInfo -computerList $computerList -Timeout $Timeout -ThrottleLimit $ThrottleLimit -outputPath $outputPath #-GetUserDeviceAffinity $GetUserDeviceAffinity
 }
 
-Write-Host -ForegroundColor Cyan $elapsedTime
+Write-Host $elapsedTime
