@@ -11,7 +11,8 @@
     DateCreated: 2023-Aug
 
 .LINK
-    https://
+    https://github.com/p8nflnt/Get-WinHostInfo-PsExec/blob/main/Get-WinHostInfo-PsExec.ps1
+    https://paytonflint.com/powershell-get-windows-host-info-with-psexec/
 #>
 
 # clear variables for repeatability
