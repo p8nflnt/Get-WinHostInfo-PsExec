@@ -36,12 +36,10 @@ $ThrottleLimit = '8'   # batch size, running ThreadJobs will be 2x this number b
 
 # get all enabled computers from AD that can be pinged
 $computerList = @()
-#$computerList += Get-ADComputer -Filter {Enabled -eq $true} -Properties Name | 
-#   Where-Object {Test-Connection -ComputerName $_.Name -Count 1 -Quiet} | 
-#    Select-Object -Property Name | 
-#    Sort-Object -Property Name
-
-$computerList += $env:COMPUTERNAME
+$computerList += Get-ADComputer -Filter {Enabled -eq $true} -Properties Name | 
+   Where-Object {Test-Connection -ComputerName $_.Name -Count 1 -Quiet} | 
+    Select-Object -Property Name | 
+    Sort-Object -Property Name
 
 # chunk the computer names into groups based on the throttle limit
 $chunks = @()
