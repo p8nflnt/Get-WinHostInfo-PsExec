@@ -9,14 +9,20 @@ Get-Variable -Exclude PWD,*Preference | Remove-Variable -EA 0
 # identify location of script
 $scriptPath = Split-Path ($MyInvocation.MyCommand.Path) -Parent
 
-# set output location for json file
+# set .JSON file location
 $jsonPath = Join-Path $scriptPath "WindowsHostsInfo.json"
+
+# set output location for .csv
+$outputPath = Join-Path $scriptPath "QueryOutput.csv"
 
 # value for query
 $queryValue = "*intel*"
 
 # get content from .json file
 $WindowsHosts = Get-Content -Path $jsonPath | ConvertFrom-Json
+
+# initialize output array
+$output = @()
 
 # get all devices w/ network interface description matching $queryValue
 ForEach ($computer in $WindowsHosts.PSObject.Properties.Name) {
@@ -28,5 +34,11 @@ ForEach ($computer in $WindowsHosts.PSObject.Properties.Name) {
     }
     If ($positive) {
         Write-Output $computer
+        # add computer to output array
+        $output += $computer
     }
 }
+
+# export to .csv
+$output `
+| Out-File $outputPath -Force
