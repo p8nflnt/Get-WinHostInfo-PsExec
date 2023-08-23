@@ -7,7 +7,7 @@
 .NOTES
     Name: Get-WinHostInfo-PsExec.ps1
     Author: Payton Flint
-    Version: 1.3
+    Version: 1.4
     DateCreated: 2023-Aug
 
 .LINK
@@ -35,10 +35,13 @@ $Timeout       = '300' # timeout in seconds
 $ThrottleLimit = '8'   # batch size, running ThreadJobs will be 2x this number because of corresponding timer jobs
 
 # get all enabled computers from AD that can be pinged
-$computerList = Get-ADComputer -Filter {Enabled -eq $true} -Properties Name | 
-    Where-Object {Test-Connection -ComputerName $_.Name -Count 1 -Quiet} | 
-    Select-Object -Property Name | 
-    Sort-Object -Property Name
+$computerList = @()
+#$computerList += Get-ADComputer -Filter {Enabled -eq $true} -Properties Name | 
+#   Where-Object {Test-Connection -ComputerName $_.Name -Count 1 -Quiet} | 
+#    Select-Object -Property Name | 
+#    Sort-Object -Property Name
+
+$computerList += $env:COMPUTERNAME
 
 # chunk the computer names into groups based on the throttle limit
 $chunks = @()
@@ -154,6 +157,7 @@ Function Get-ComputerInfo {
         [int]$Timeout,
         [int]$ThrottleLimit,
         $outputPath,
+        [bool]$appx,           # only specify if desired (large dataset)
         [bool]$drivers,        # only specify if desired (large dataset) 
         $GetUserDeviceAffinity # file path for Get-UserDeviceAffinity.ps1 (only specify if desired)
     )
@@ -163,8 +167,11 @@ Function Get-ComputerInfo {
             $computerName,
             $GetUserDeviceAffinity,
             $WindowsHosts,
-            $outputPath
+            $outputPath,
+            [bool]$appx,       # only specify if desired (large dataset)
+            [bool]$drivers     # only specify if desired (large dataset) 
         )
+
         # start function ConvertTo-Objects
         Function ConvertTo-Objects {
             param (
@@ -217,17 +224,23 @@ Function Get-ComputerInfo {
             # get network info & convert to objects
             $netInfo = psexec.exe -s -nobanner -h \\$computerName Powershell.exe -Command "Get-NetIPConfiguration" 2> $null
             $netInfo = ConvertTo-Objects -inputString $netInfo
-            # get application info & convert to objects
+            # get  win32 application info & convert to objects
             $appInfo = psexec.exe -s -nobanner -h \\$computerName Powershell.exe -Command "Get-WmiObject -Class Win32_Product" 2> $null
             $appInfo = ConvertTo-Objects -inputString $appInfo
             # create output object w/ above objects
             $output = [PSCustomObject]@{
-                    System       = $compInfo
-                    Network      = $netInfo
-                    Applications = $appInfo
+                    System    = $compInfo
+                    Network   = $netInfo
+                    Win32Apps = $appInfo
+            }
+            # if appx is specified, get appx package info, convert to objects, and add to output
+            if ($appx -eq $true) {
+                $appxInfo = psexec.exe -s -nobanner -h \\$env:ComputerName Powershell.exe -Command "Get-AppxPackage -AllUsers | Select-Object Name, Version, Publisher | Format-List" 2> $null
+                $appxInfo = ConvertTo-Objects -inputString $appxInfo
+                $output | Add-Member -MemberType NoteProperty -Name "AppxApps" -Value $appxInfo
             }
             # if drivers is specified, get driver info, convert to objects, and add to output
-            if ($drivers) {
+            if ($drivers -eq $true) {
                 $driverInfo = psexec.exe -s -nobanner -h \\$computerName Powershell.exe -Command "Get-WmiObject -Class Win32_PnPSignedDriver" 2> $null
                 $driverInfo = ConvertTo-Objects -inputString $driverInfo
                 $output | Add-Member -MemberType NoteProperty -Name "Drivers" -Value $driverInfo
@@ -274,7 +287,7 @@ Function Get-ComputerInfo {
 
         foreach ($computerName in $chunk) {
             Write-Host -ForegroundColor Cyan "Processing computer: $computerName"
-            $compInfoJob  = Start-ThreadJob -ScriptBlock $GetCompInfo -ThrottleLimit $ThrottleLimit -ArgumentList $computerName, $GetUserDeviceAffinity, $windowsHosts, $outputPath
+            $compInfoJob  = Start-ThreadJob -ScriptBlock $GetCompInfo -ThrottleLimit $ThrottleLimit -ArgumentList $computerName, $GetUserDeviceAffinity, $windowsHosts, $outputPath, $appx, $drivers
             $timerJob     = Start-ThreadJob -ScriptBlock $timerScript -ArgumentList $Timeout, $compInfoJob
         }
     }
@@ -282,7 +295,7 @@ Function Get-ComputerInfo {
 } # end function Get-ComputerInfo
 
 $elapsedTime = Measure-Command {
-    Get-ComputerInfo -computerList $computerList -Timeout $Timeout -ThrottleLimit $ThrottleLimit -outputPath $outputPath #-GetUserDeviceAffinity $GetUserDeviceAffinity
+    Get-ComputerInfo -computerList $computerList -Timeout $Timeout -ThrottleLimit $ThrottleLimit -outputPath $outputPath #-appx $true -drivers $true -GetUserDeviceAffinity $GetUserDeviceAffinity
 }
 
 Write-Host $elapsedTime
