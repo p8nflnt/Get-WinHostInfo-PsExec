@@ -232,13 +232,13 @@ Function Get-ComputerInfo {
                     Win32Apps = $appInfo
             }
             # if appx is specified, get appx package info, convert to objects, and add to output
-            if ($appx -eq $true) {
+            if ($appx) {
                 $appxInfo = psexec.exe -s -nobanner -h \\$env:ComputerName Powershell.exe -Command "Get-AppxPackage -AllUsers | Select-Object Name, Version, Publisher | Format-List" 2> $null
                 $appxInfo = ConvertTo-Objects -inputString $appxInfo
                 $output | Add-Member -MemberType NoteProperty -Name "AppxApps" -Value $appxInfo
             }
             # if drivers is specified, get driver info, convert to objects, and add to output
-            if ($drivers -eq $true) {
+            if ($drivers) {
                 $driverInfo = psexec.exe -s -nobanner -h \\$computerName Powershell.exe -Command "Get-WmiObject -Class Win32_PnPSignedDriver" 2> $null
                 $driverInfo = ConvertTo-Objects -inputString $driverInfo
                 $output | Add-Member -MemberType NoteProperty -Name "Drivers" -Value $driverInfo
