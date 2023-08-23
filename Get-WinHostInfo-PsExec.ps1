@@ -31,8 +31,8 @@ $outputPath = Join-Path $scriptPath "WindowsHostsInfo.json"
 
 # specify timeout & throttle limit
 # these affect performance
-$Timeout       = '300' # timeout in seconds
-$ThrottleLimit = '8'   # batch size, running ThreadJobs will be 2x this number because of corresponding timer jobs
+$Timeout       = 300 # timeout in seconds
+$ThrottleLimit = 8   # batch size, running ThreadJobs will be 2x this number because of corresponding timer jobs
 
 # get all enabled computers from AD that can be pinged
 $computerList = @()
