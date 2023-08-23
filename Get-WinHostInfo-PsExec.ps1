@@ -284,6 +284,7 @@ Function Get-ComputerInfo {
         Write-Host -ForegroundColor Green "Processing new chunk"
 
         foreach ($computerName in $chunk) {
+            $computerName = $($computerName.Name)
             Write-Host -ForegroundColor Cyan "Processing computer: $computerName"
             $compInfoJob  = Start-ThreadJob -ScriptBlock $GetCompInfo -ThrottleLimit $ThrottleLimit -ArgumentList $computerName, $GetUserDeviceAffinity, $windowsHosts, $outputPath, $appx, $drivers
             $timerJob     = Start-ThreadJob -ScriptBlock $timerScript -ArgumentList $Timeout, $compInfoJob
