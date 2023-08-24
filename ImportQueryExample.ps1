@@ -15,8 +15,13 @@ $jsonPath = Join-Path $scriptPath "WindowsHostsInfo.json"
 # set output location for .csv
 $outputPath = Join-Path $scriptPath "QueryOutput.csv"
 
-# value for query
-$queryValue = "*intel*"
+# select query type: 
+# System, Network, Win32Apps, AppxApps, Drivers
+$queryType =     "Network"
+# select query property:
+$queryProperty = "InterfaceDescription"
+# specify value for query:
+$queryValue =    "*intel*"
 
 # get content from .json file
 $WindowsHosts = Get-Content -Path $jsonPath | ConvertFrom-Json
@@ -24,11 +29,11 @@ $WindowsHosts = Get-Content -Path $jsonPath | ConvertFrom-Json
 # initialize output array
 $output = @()
 
-# get all devices w/ network interface description matching $queryValue
+# get all devices w/ $queryType, $queryProperty matching $queryValue
 ForEach ($computer in $WindowsHosts.PSObject.Properties.Name) {
     $positive = $null # initialize variable
-    ForEach ($network in $WindowsHosts.$computer.Network) {
-        If ($network.InterfaceDescription -like "$queryValue"){
+    ForEach ($item in $WindowsHosts.$computer.$queryType) {
+        If ($item.$queryProperty -like "$queryValue"){
             $positive = $true
         }
     }
