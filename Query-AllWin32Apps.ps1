@@ -13,7 +13,7 @@ $scriptPath = Split-Path ($MyInvocation.MyCommand.Path) -Parent
 $jsonPath = Join-Path $scriptPath "WindowsHostsInfo.json"
 
 # set output location for .csv
-$outputPath = Join-Path $scriptPath "Win32AppsOutput.csv"
+$outputPath = Join-Path $scriptPath "AllWin32Apps-Output.csv"
 
 # select query type:
 $queryType = "Win32Apps"
