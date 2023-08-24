@@ -47,4 +47,5 @@ ForEach ($computer in $WindowsHosts.PSObject.Properties.Name) {
 
 # export to .csv
 $output `
+| Sort-Object -Unique `
 | Out-File $outputPath -Force
