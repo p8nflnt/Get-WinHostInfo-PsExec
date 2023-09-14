@@ -24,7 +24,7 @@ $scriptPath = Split-Path ($MyInvocation.MyCommand.Path) -Parent
 # filename for Get-UserDeviceAffinity script
 $GetUserDeviceAffinity = "Get-UserDeviceAffinity.ps1"
 # build UNC path
-$GetUserDeviceAffinity = "\\" + $env:COMPUTERNAME + '\' + $ScriptPath.Replace(':', '$') + '\' + $GetUserDeviceAffinity
+$GetUserDeviceAffinity = '\\' + $env:COMPUTERNAME + '\' + $ScriptPath.Replace(':', '$') + '\' + $GetUserDeviceAffinity
 
 # set output location for json file
 $outputPath = Join-Path $scriptPath "WindowsHostsInfo.json"
