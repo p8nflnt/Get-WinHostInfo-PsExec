@@ -233,7 +233,7 @@ Function Get-ComputerInfo {
             }
             # if appx is specified, get appx package info, convert to objects, and add to output
             if ($appx) {
-                $appxInfo = psexec.exe -s -nobanner -h \\$env:ComputerName Powershell.exe -Command "Get-AppxPackage -AllUsers | Select-Object Name, Version, Publisher | Format-List" 2> $null
+                $appxInfo = psexec.exe -s -nobanner -h \\$computerName Powershell.exe -Command "Get-AppxPackage -AllUsers | Select-Object Name, Version, Publisher | Format-List" 2> $null
                 $appxInfo = ConvertTo-Objects -inputString $appxInfo
                 $output | Add-Member -MemberType NoteProperty -Name "AppxApps" -Value $appxInfo
             }
